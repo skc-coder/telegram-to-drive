@@ -38,10 +38,26 @@ class Config:
         # Channels list
         self.channels = []
         if self.parser.has_section("channels"):
-            for _, val in self.parser.items("channels"):
+            for key, val in self.parser.items("channels"):
                 val = val.strip()
                 if val:
-                    self.channels.append(val)
+                    self.channels.append((key, val))
+
+    def mark_channel_completed(self, key: str, channel_url: str):
+        """Moves a fully completed channel from [channels] section to [completed_channels] section in config.ini."""
+        if not self.parser.has_section("completed_channels"):
+            self.parser.add_section("completed_channels")
+
+        # Remove from [channels]
+        if self.parser.has_section("channels") and self.parser.has_option("channels", key):
+            self.parser.remove_option("channels", key)
+
+        # Add to [completed_channels]
+        self.parser.set("completed_channels", key, channel_url)
+
+        # Write back to config.ini
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            self.parser.write(f)
 
     def validate(self):
         if not self.api_id or self.api_id == "YOUR_API_ID":
@@ -49,4 +65,4 @@ class Config:
         if not self.api_hash or self.api_hash == "YOUR_API_HASH":
             raise ValueError("Please configure a valid telegram 'api_hash' in config.ini")
         if not self.channels:
-            raise ValueError("No Telegram channels found in [channels] section of config.ini")
+            raise ValueError("No pending Telegram channels found in [channels] section of config.ini")

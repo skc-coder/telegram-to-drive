@@ -32,13 +32,13 @@ class SyncPipeline:
         self.ui.start()
 
         try:
-            for channel_link in self.config.channels:
-                await self.process_channel(channel_link)
+            for key, channel_link in list(self.config.channels):
+                await self.process_channel(key, channel_link)
         finally:
             self.ui.stop()
             await self.downloader.disconnect()
 
-    async def process_channel(self, channel_link: str):
+    async def process_channel(self, channel_key: str, channel_link: str):
         try:
             entity, folder_name = await self.downloader.resolve_entity(channel_link)
         except Exception as e:
@@ -122,6 +122,10 @@ class SyncPipeline:
         for w in upload_workers:
             w.cancel()
         await asyncio.gather(*upload_workers, return_exceptions=True)
+
+        # Mark channel as completed in config.ini
+        logger.info(f"Channel '{folder_name}' sync completed! Moving from [channels] to [completed_channels] in config.ini")
+        self.config.mark_channel_completed(channel_key, channel_link)
 
     async def _download_producer_task(
         self, msg, msg_id: int, file_name: str, total_bytes: int,
