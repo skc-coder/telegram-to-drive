@@ -23,7 +23,10 @@ class TelegramDownloader:
         await self.client.connect()
         if not await self.client.is_user_authorized():
             logger.info("Telegram client not authorized. Starting authentication prompt...")
-            await self.client.start(phone=self.phone_number)
+            if self.phone_number and self.phone_number != "YOUR_PHONE_NUMBER":
+                await self.client.start(phone=self.phone_number)
+            else:
+                await self.client.start()
 
     async def disconnect(self):
         await self.client.disconnect()
