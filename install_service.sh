@@ -18,6 +18,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
+ExecStartPre=/bin/sleep 60
 ExecStart=$(which uv) run python main.py
 Restart=on-failure
 RestartSec=30s
