@@ -1,0 +1,20 @@
+[project]
+name = "telegram-gdrive-sync"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "skc-coder", email = "84ya+github@Proton.me" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "cryptg>=0.6.0",
+    "pillow>=12.3.0",
+    "rich>=15.0.0",
+    "telethon>=1.44.0",
+    "tqdm>=4.70.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
