@@ -203,13 +203,24 @@ class SyncPipeline:
                 upload_queue.task_done()
 
     def _get_message_filename(self, msg) -> Optional[str]:
+        name = None
         if getattr(msg, 'file', None) and getattr(msg.file, 'name', None):
-            return msg.file.name
-        if getattr(msg.media, 'document', None):
+            name = msg.file.name
+        elif getattr(msg.media, 'document', None):
             for attr in msg.media.document.attributes:
                 if hasattr(attr, 'file_name') and attr.file_name:
-                    return attr.file_name
-        return f"media_{msg.id}"
+                    name = attr.file_name
+                    break
+        if not name:
+            name = f"media_{msg.id}"
+        
+        # Clean prefix patterns like "58_(Python ProgrammingLecture..." -> "Lecture..." or "Annotated Notes..."
+        import re
+        cleaned_name = re.sub(r'^\d+_\([^)]*?(Annotated Notes.*|Lecture\s+.*)$', r'\1', name, flags=re.IGNORECASE)
+        if cleaned_name == name:
+            # Fallback pattern for generic leading digits and channel tags e.g. "58_..."
+            cleaned_name = re.sub(r'^\d+_\(?[^)]*?\)?\s*', '', name)
+        return cleaned_name if cleaned_name else name
 
     def _cleanup_temp(self, temp_dir: Path, index_db: IndexDB):
         if not temp_dir.exists():
