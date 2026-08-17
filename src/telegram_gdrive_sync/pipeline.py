@@ -214,12 +214,15 @@ class SyncPipeline:
         if not name:
             name = f"media_{msg.id}"
         
-        # Clean prefix patterns like "58_(Python ProgrammingLecture..." -> "Lecture..." or "Annotated Notes..."
+        # Clean prefix patterns like "63_(Python ProgrammingAnnotated Notes..." -> "Annotated Notes..."
+        # or "58_(Python ProgrammingLecture..." -> "Lecture..."
         import re
-        cleaned_name = re.sub(r'^\d+_\([^)]*?(Annotated Notes.*|Lecture\s+.*)$', r'\1', name, flags=re.IGNORECASE)
-        if cleaned_name == name:
-            # Fallback pattern for generic leading digits and channel tags e.g. "58_..."
-            cleaned_name = re.sub(r'^\d+_\(?[^)]*?\)?\s*', '', name)
+        match = re.search(r'(Annotated Notes\b.*|Lecture\b.*)', name, re.IGNORECASE)
+        if match:
+            cleaned_name = match.group(1)
+        else:
+            # Fallback pattern for generic leading digits, underscores, and channel tags
+            cleaned_name = re.sub(r'^\d*_\(?[^)]*?\)?\s*', '', name)
         return cleaned_name if cleaned_name else name
 
     def _cleanup_temp(self, temp_dir: Path, index_db: IndexDB):
