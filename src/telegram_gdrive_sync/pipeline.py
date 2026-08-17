@@ -95,7 +95,7 @@ class SyncPipeline:
                 file_size = getattr(msg.media, 'document', None)
                 total_bytes = file_size.size if file_size else 0
 
-                local_dest = channel_temp_dir / f"{msg_id}_{file_name}"
+                local_dest = channel_temp_dir / file_name
 
                 # Storage disk guard check: Wait if free disk space is lower than threshold
                 while not self.disk_guard.has_sufficient_space(total_bytes):
