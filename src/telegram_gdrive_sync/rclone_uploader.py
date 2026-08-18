@@ -49,15 +49,17 @@ class RcloneUploader:
         # Pattern matches e.g. Transferred: 5.2 MiB / 10 MiB, 52%, 1.2 MiB/s, ETA 4s
         transferred_pattern = re.compile(r"Transferred:\s+([\d.]+)\s*(\w+)\s*/\s*([\d.]+)\s*(\w+),\s*(\d+)%,\s*([\d.]+)\s*(\w+/s),\s*ETA\s*(.+)")
 
-        async def read_stream(stream):
+        stderr_lines = []
+        async def read_stream(stream, is_err=False):
             nonlocal total_size
             while True:
                 line = await stream.readline()
                 if not line:
                     break
                 line_str = line.decode("utf-8", errors="ignore").strip()
+                if is_err and line_str:
+                    stderr_lines.append(line_str)
                 if progress_callback and "Transferred:" in line_str:
-                    # Parse bytes transferred & speed
                     match = transferred_pattern.search(line_str)
                     if match:
                         cur_val, cur_unit, tot_val, tot_unit, pct, speed_val, speed_unit, eta = match.groups()
@@ -68,12 +70,13 @@ class RcloneUploader:
 
         await asyncio.gather(
             read_stream(proc.stdout),
-            read_stream(proc.stderr)
+            read_stream(proc.stderr, is_err=True)
         )
 
         returncode = await proc.wait()
         if returncode != 0:
-            raise RuntimeError(f"rclone move failed with return code {returncode}")
+            err_msg = "\n".join(stderr_lines[-5:]) if stderr_lines else "Unknown rclone error"
+            raise RuntimeError(f"rclone move failed (code {returncode}): {err_msg}")
 
         remote_target_path = f"{dest_remote_dir}/{local_path.name}"
         logger.info(f"Upload complete: {remote_target_path}")
