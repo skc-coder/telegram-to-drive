@@ -57,7 +57,10 @@ def sync_gdrive_to_state():
                 d_status = row["download_status"]
                 u_status = row["upload_status"]
 
-                if fname in remote_files:
+                clean_fname = re.sub(r'[^a-z0-9]', '', fname.lower())
+                matched = fname in remote_files or any(clean_fname == re.sub(r'[^a-z0-9]', '', rf.lower()) for rf in remote_files)
+
+                if matched:
                     if d_status != "uploaded" or u_status != "uploaded":
                         cursor.execute("""
                             UPDATE file_index
