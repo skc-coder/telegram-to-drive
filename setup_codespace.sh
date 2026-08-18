@@ -26,10 +26,20 @@ if [ -n "$RCLONE_CONF_BASE64" ]; then
     echo "rclone.conf restored successfully!"
 fi
 
-# 5. Restore Telegram session file if provided in TG_SESSION_BASE64 secret/env
+# 5. Ensure .state directory exists and clear corrupted session placeholders
 mkdir -p .state
+if [ -f .state/tg_session.session ]; then
+    if ! file .state/tg_session.session | grep -q "SQLite"; then
+        echo "Removing non-SQLite session placeholder..."
+        rm -f .state/tg_session.session
+    fi
+fi
+
 if [ -n "$TG_SESSION_BASE64" ]; then
     echo "$TG_SESSION_BASE64" | base64 -d > .state/tg_session.session 2>/dev/null || true
+    if ! file .state/tg_session.session | grep -q "SQLite"; then
+        rm -f .state/tg_session.session
+    fi
 fi
 
 # 6. Install python dependencies editable & uv sync
