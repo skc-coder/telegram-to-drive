@@ -2,19 +2,41 @@
 
 A high-performance, producer-consumer daemon that downloads media from Telegram channels and uploads them to Google Drive in parallel, using per-channel indexing for full resumability.
 
-## Key Features
+---
 
-- **Producer-Consumer Concurrent Pipeline**: Downloads up to 3 files in parallel while uploading completed files to Google Drive with up to 3 `rclone` workers.
-- **Per-Channel Resumable Indexing**: Separate SQLite index per channel ensures files are never re-downloaded or re-uploaded across discontinuous runs.
-- **Storage Disk Guard**: Automatically pauses downloads if available disk space in `/mnt/storage/telegram_downloads` drops below configured threshold (e.g. 5 GB).
-- **Network Drop Auto-Retry**: Exponential backoff handles network glitches and Telegram rate limits cleanly.
-- **Startup Temp Cleanup**: Automatically removes partial `.tmp` files from interrupted runs.
-- **Rich Multi-Progress Terminal UI**: Shows channel name, download speed & progress (Telethon), and upload speed & ETA (`rclone`).
-- **Autostart Service**: Runs automatically in the background on system login via systemd user service.
+## Standardization & Plan Architecture (`name_standardization`)
+
+The system includes a **dynamic name & folder standardization module** capable of parsing both structured syllabus JSON files (e.g. GATE course detail plans) and lecture planner PDFs/text schedules:
+
+- **Per-Channel Standardization Modes**:
+  - `module_number_only`: Retains module prefix (`Module N ...`) while standardizing inner lecture titles.
+  - `clean_prefix`: Strips channel/number prefixes, standardizing files to `<number> <topic_name>` format.
+  - `neev_class_9`: Applies subject filtering (**SST, Science, Hindi, Maths, English**), skipping unwanted subjects (Sanskrit, AI, IT, Computer Science) and GIFs.
+- **Syllabus / Lecture Plan Mapping**: Automatically aligns raw Telegram file names with official course titles from `course_details.json` or lecture planners (PDFs in `~/Downloads/mega/`), ensuring clean folder hierarchy on Google Drive before uploading.
 
 ---
 
-## Setup & Installation
+## 🚀 Running on GitHub Codespaces (One-Line Setup)
+
+When launching a new Codespace:
+
+```bash
+export RCLONE_CONF_BASE64="<YOUR_RCLONE_B64>" && export TG_SESSION_BASE64="<YOUR_TG_SESSION_B64>" && ./setup_codespace.sh
+```
+
+Then run the pipeline:
+```bash
+uv run python main.py
+```
+
+### Protection Against Duplicate Downloads / Uploads:
+- **SQLite Index Databases (`.state/index_<channel_id>.sqlite`)**: Tracks every message ID's `download_status` and `upload_status`.
+- **Pre-Check Guard**: Before initiating any download, the pipeline checks the SQLite index. If a message ID is already `downloaded`, `uploaded`, or currently `downloading`, it is automatically skipped.
+- **Rclone Verification**: Performs remote checks so incomplete local uploads are resumed seamlessly without re-downloading.
+
+---
+
+## Setup & Installation (Local Machine)
 
 ```bash
 # 1. Install dependencies using uv
@@ -33,23 +55,19 @@ In `config.ini`:
 
 ## Running Interactive Mode (Initial Setup & Authentication)
 
-Run interactively the first time so Telethon can prompt for your Telegram login code and create the session file:
-
 ```bash
 uv run python main.py
 ```
 
 ---
 
-## Background Autostart Service Setup
-
-To make the system run automatically in the background whenever you log in:
+## Background Autostart Service Setup (Systemd User Daemon)
 
 ```bash
 ./install_service.sh
 ```
 
-### Managing the Background Daemon:
+### Managing the Daemon:
 - **Check Status**: `systemctl --user status telegram-gdrive-sync.service`
 - **View Live Daemon Logs**: `journalctl --user -u telegram-gdrive-sync.service -f`
 - **Stop Daemon**: `systemctl --user stop telegram-gdrive-sync.service`
