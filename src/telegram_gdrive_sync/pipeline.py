@@ -87,6 +87,16 @@ class SyncPipeline:
                 if not file_name:
                     continue
 
+                # Skip GIFs (mime type image/gif or .gif extension)
+                is_gif = False
+                if getattr(msg, 'file', None) and getattr(msg.file, 'mime_type', None) == 'image/gif':
+                    is_gif = True
+                elif Path(file_name).suffix.lower() == '.gif':
+                    is_gif = True
+                if is_gif:
+                    logger.debug(f"Skipping GIF file: {file_name}")
+                    continue
+
                 # Extension filtering check
                 ext = Path(file_name).suffix.lower()
                 if self.config.allowed_extensions and ext not in self.config.allowed_extensions:
