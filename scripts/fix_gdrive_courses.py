@@ -71,8 +71,9 @@ for course_key, remote_paths in target_courses.items():
             for sub_path, file_list in targets:
                 dir_path = f'{base_remote}/{sub_path}'.strip('/') if sub_path else base_remote
                 for old_sfn in file_list:
-                    # Strip lead prefixes like 000. 001. 002.
-                    sfn_no_prefix = re.sub(r'^\d{3}\.\s*', '', old_sfn)
+                    # Skip if file already has lecture number e.g. 1a, 2b, 4c or is already in a module folder
+                    if re.match(r'^\d+[a-z]?\b', base_sfn, re.IGNORECASE) or sub_path.startswith("Module"):
+                        continue
                     sfn_no_prefix = re.sub(r'^(Lecture\s*|LECTURE\s*)', '', sfn_no_prefix, flags=re.IGNORECASE).strip()
 
                     ext = ''
