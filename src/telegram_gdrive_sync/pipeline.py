@@ -83,7 +83,7 @@ class SyncPipeline:
                     continue
 
                 # Get media attributes / filename
-                file_name = self._get_message_filename(msg)
+                file_name = self._get_message_filename(msg, folder_name)
                 if not file_name:
                     continue
 
@@ -202,7 +202,7 @@ class SyncPipeline:
                 await ul_slots.put(slot_id)
                 upload_queue.task_done()
 
-    def _get_message_filename(self, msg) -> Optional[str]:
+    def _get_message_filename(self, msg, channel_name: str = "") -> Optional[str]:
         name = None
         if getattr(msg, 'file', None) and getattr(msg.file, 'name', None):
             name = msg.file.name
@@ -215,13 +215,22 @@ class SyncPipeline:
             name = f"media_{msg.id}"
         
         import re
-        # Check if filename starts with Module_X_... and transform to "Module X rest"
-        mod_match = re.match(r'^Module[_\s]*(\d+)[_\s]*[^/]*?(?=(Lecture|Annotated|OPTIONAL))', name, re.IGNORECASE)
-        if mod_match:
-            mod_num = mod_match.group(1)
-            rest = name[mod_match.end():]
-            cleaned_name = f"Module {mod_num} {rest}".strip()
+        rule = self.config.name_rules.get(channel_name.strip().lower(), self.config.name_rules.get("default", "clean_prefix"))
+
+        if rule == "module_number_only":
+            mod_match = re.match(r'^Module[_\s]*(\d+)[_\s]*[^/]*?(?=(Lecture|Annotated|OPTIONAL))', name, re.IGNORECASE)
+            if mod_match:
+                mod_num = mod_match.group(1)
+                rest = name[mod_match.end():]
+                cleaned_name = f"Module {mod_num} {rest}".strip()
+            else:
+                match = re.search(r'(Annotated Notes\b.*|Annotated_No\b.*|Annotated_Notes\b.*|Annotated\b.*|Lecture\b.*|OPTIONAL\b.*)', name, re.IGNORECASE)
+                if match:
+                    cleaned_name = match.group(1)
+                else:
+                    cleaned_name = re.sub(r'^\d*_\(?[^)]*?\)?\s*', '', name)
         else:
+            # clean_prefix rule
             match = re.search(r'(Annotated Notes\b.*|Annotated_No\b.*|Annotated_Notes\b.*|Annotated\b.*|Lecture\b.*|OPTIONAL\b.*)', name, re.IGNORECASE)
             if match:
                 cleaned_name = match.group(1)

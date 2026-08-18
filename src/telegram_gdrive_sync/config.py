@@ -43,6 +43,12 @@ class Config:
                 if val:
                     self.channels.append((key, val))
 
+        # Name standardization rules per channel
+        self.name_rules = {}
+        if self.parser.has_section("name_standardization"):
+            for key, val in self.parser.items("name_standardization"):
+                self.name_rules[key.strip().lower()] = val.strip()
+
     def mark_channel_completed(self, key: str, channel_url: str):
         """Moves a fully completed channel from [channels] section to [completed_channels] section in config.ini."""
         if not self.parser.has_section("completed_channels"):
