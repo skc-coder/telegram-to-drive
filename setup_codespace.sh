@@ -32,7 +32,8 @@ if [ -n "$TG_SESSION_BASE64" ]; then
     echo "$TG_SESSION_BASE64" | base64 -d > .state/tg_session.session 2>/dev/null || true
 fi
 
-# 6. Install python dependencies
-uv sync || pip install telethon rich psutil pypdf pdfplumber
+# 6. Install python dependencies editable & uv sync
+$HOME/.local/bin/uv sync || true
+$HOME/.local/bin/uv pip install -e . || pip install -e . || true
 
 echo "=== Setup complete! ==="
