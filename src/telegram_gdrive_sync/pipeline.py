@@ -25,8 +25,6 @@ class SyncPipeline:
             Path(".state")
         )
         self.ui = MultiProgressUI(config.download_workers, config.upload_workers)
-        from .plan_resolver import PlanResolver
-        self.plan_resolver = PlanResolver(Path("plans"))
 
     async def run(self):
         logger.info("Initializing Telegram client connection...")
@@ -47,11 +45,12 @@ class SyncPipeline:
             logger.error(f"Failed to resolve channel entity for {channel_link}: {e}")
             return
 
-        self.ui.set_channel_name(folder_name)
+        self.ui.set_channel(folder_name)
+        index_db = IndexDB(Path(".state"), str(getattr(entity, 'id', folder_name)))
+
+        # Clean up any leftover incomplete .tmp files or orphan downloads for this channel
         channel_temp_dir = self.config.temp_download_dir / folder_name
         channel_temp_dir.mkdir(parents=True, exist_ok=True)
-
-        index_db = IndexDB(Path(".state") / f"index_{entity.id}.sqlite")
         self._cleanup_temp(channel_temp_dir, index_db)
 
         # Queues for producer (downloads) -> consumer (uploads)
@@ -84,40 +83,33 @@ class SyncPipeline:
                     continue
 
                 # Get media attributes / filename
-                raw_file_name = self._get_raw_filename(msg)
-                if not raw_file_name:
+                file_name = self._get_message_filename(msg, folder_name)
+                if not file_name:
                     continue
 
                 # Neev 2026 subject filtering (sst, science, hindi, maths, english only)
                 if "neev" in folder_name.lower():
-                    text_context = (msg.text or "") + " " + raw_file_name
+                    text_context = (msg.text or "") + " " + file_name
                     allowed_keywords = ["sst", "science", "physics", "chemistry", "biology", "hindi", "math", "maths", "english"]
                     disallowed_keywords = ["sanskrit", "computer science", "information technology", "ai", "artificial intelligence"]
                     
                     text_lower = text_context.lower()
                     if any(dk in text_lower for dk in disallowed_keywords):
-                        logger.info(f"Skipping disallowed subject file: {raw_file_name}")
+                        logger.info(f"Skipping disallowed subject file: {file_name}")
                         continue
                     if not any(ak in text_lower for ak in allowed_keywords):
-                        logger.info(f"Skipping unlisted subject file: {raw_file_name}")
+                        logger.info(f"Skipping unlisted subject file: {file_name}")
                         continue
 
                 # Skip GIFs (mime type image/gif or .gif extension)
                 is_gif = False
                 if getattr(msg, 'file', None) and getattr(msg.file, 'mime_type', None) == 'image/gif':
                     is_gif = True
-                elif Path(raw_file_name).suffix.lower() == '.gif':
+                elif Path(file_name).suffix.lower() == '.gif':
                     is_gif = True
                 if is_gif:
+                    logger.debug(f"Skipping GIF file: {file_name}")
                     continue
-
-                # Resolve subfolder & clean plan name
-                subfolder = ""
-                file_name = raw_file_name
-                if "dbms" in folder_name.lower():
-                    subfolder, file_name = self.plan_resolver.resolve_dbms(raw_file_name)
-                elif "neev" in folder_name.lower():
-                    subfolder, file_name = self.plan_resolver.resolve_neev(raw_file_name, msg.text or "")
 
                 # Extension filtering check
                 ext = Path(file_name).suffix.lower()
@@ -140,7 +132,7 @@ class SyncPipeline:
                 # Spawn parallel download task
                 asyncio.create_task(
                     self._download_producer_task(
-                        msg, msg_id, file_name, total_bytes, local_dest, slot_id, dl_slots, upload_queue, index_db, subfolder
+                        msg, msg_id, file_name, total_bytes, local_dest, slot_id, dl_slots, upload_queue, index_db
                     )
                 )
 
@@ -162,7 +154,7 @@ class SyncPipeline:
     async def _download_producer_task(
         self, msg, msg_id: int, file_name: str, total_bytes: int,
         local_dest: Path, slot_id: int, dl_slots: asyncio.Queue,
-        upload_queue: asyncio.Queue, index_db: IndexDB, subfolder: str = ""
+        upload_queue: asyncio.Queue, index_db: IndexDB
     ):
         try:
             # Check if file was already downloaded locally previously
@@ -202,8 +194,7 @@ class SyncPipeline:
                 "msg_id": msg_id,
                 "file_name": file_name,
                 "local_path": local_dest,
-                "total_bytes": total_bytes,
-                "subfolder": subfolder
+                "total_bytes": total_bytes
             })
         except Exception as e:
             logger.error(f"Failed to download msg_id {msg_id} ({file_name}): {e}")
@@ -224,7 +215,6 @@ class SyncPipeline:
             local_path: Path = item["local_path"]
             file_name = item["file_name"]
             total_bytes = item["total_bytes"]
-            subfolder = item.get("subfolder", "")
 
             try:
                 self.ui.add_upload_task(slot_id, file_name, total_bytes)
@@ -233,7 +223,7 @@ class SyncPipeline:
                     self.ui.update_upload_task(slot_id, cur, tot, speed, eta)
 
                 # Execute rclone upload (move)
-                remote_path = await self.uploader.upload_file(local_path, folder_name, _ul_prog_cb, subfolder=subfolder)
+                remote_path = await self.uploader.upload_file(local_path, folder_name, _ul_prog_cb)
                 index_db.mark_uploaded(msg_id, remote_path)
             except Exception as e:
                 logger.error(f"Failed to upload msg_id {msg_id} ({file_name}): {e}")
@@ -243,7 +233,7 @@ class SyncPipeline:
                 await ul_slots.put(slot_id)
                 upload_queue.task_done()
 
-    def _get_raw_filename(self, msg) -> Optional[str]:
+    def _get_message_filename(self, msg, channel_name: str = "") -> Optional[str]:
         name = None
         if getattr(msg, 'file', None) and getattr(msg.file, 'name', None):
             name = msg.file.name
@@ -254,6 +244,12 @@ class SyncPipeline:
                     break
         if not name:
             name = f"media_{msg.id}"
+        
+        import re
+        rule = self.config.name_rules.get(channel_name.strip().lower(), self.config.name_rules.get("default", "clean_prefix"))
+
+        if rule == "module_number_only":
+            mod_match = re.match(r'^Module[_\s]*(\d+)[_\s]*[^/]*?(?=(Lecture|Annotated|OPTIONAL))', name, re.IGNORECASE)
             if mod_match:
                 mod_num = mod_match.group(1)
                 rest = name[mod_match.end():]

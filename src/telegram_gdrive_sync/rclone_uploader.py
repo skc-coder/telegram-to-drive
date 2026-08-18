@@ -17,14 +17,12 @@ class RcloneUploader:
         self,
         local_path: Path,
         channel_folder_name: str,
-        progress_callback: Optional[Callable[[int, int, float, str], None]] = None,
-        subfolder: str = ""
+        progress_callback: Optional[Callable[[int, int, float, str], None]] = None
     ) -> str:
         """
-        Uploads (moves) local_path to Google Drive under <remote_name>:<remote_folder>/<channel_folder_name>/<subfolder>/
+        Uploads (moves) local_path to Google Drive under <remote_name>:<remote_folder>/<channel_folder_name>/
         """
-        target_dir = f"{channel_folder_name}/{subfolder.strip('/')}" if subfolder.strip() else channel_folder_name
-        dest_remote_dir = f"{self.remote_name}:{self.remote_folder}/{target_dir}"
+        dest_remote_dir = f"{self.remote_name}:{self.remote_folder}/{channel_folder_name}"
         
         cmd = [
             "rclone", "move",
