@@ -54,6 +54,9 @@ class MultiProgressUI:
         if self.live:
             self.live.update(self._generate_layout())
 
+    def set_channel_name(self, name: str):
+        self.set_channel(name)
+
     def add_download_task(self, slot_id: int, filename: str, total_bytes: int) -> TaskID:
         # Truncate filename for display
         disp_name = (filename[:25] + '..') if len(filename) > 27 else filename
