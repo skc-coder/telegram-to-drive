@@ -87,6 +87,20 @@ class SyncPipeline:
                 if not file_name:
                     continue
 
+                # Neev 2026 subject filtering (sst, science, hindi, maths, english only)
+                if "neev" in folder_name.lower():
+                    text_context = (msg.text or "") + " " + file_name
+                    allowed_keywords = ["sst", "science", "physics", "chemistry", "biology", "hindi", "math", "maths", "english"]
+                    disallowed_keywords = ["sanskrit", "computer science", "information technology", "ai", "artificial intelligence"]
+                    
+                    text_lower = text_context.lower()
+                    if any(dk in text_lower for dk in disallowed_keywords):
+                        logger.info(f"Skipping disallowed subject file: {file_name}")
+                        continue
+                    if not any(ak in text_lower for ak in allowed_keywords):
+                        logger.info(f"Skipping unlisted subject file: {file_name}")
+                        continue
+
                 # Skip GIFs (mime type image/gif or .gif extension)
                 is_gif = False
                 if getattr(msg, 'file', None) and getattr(msg.file, 'mime_type', None) == 'image/gif':
