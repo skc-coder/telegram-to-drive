@@ -149,6 +149,13 @@ class SyncPipeline:
                         break
                     except Exception as err:
                         retries += 1
+                        if "file reference has expired" in str(err).lower() or "filereferenceexpirederror" in type(err).__name__.lower():
+                            try:
+                                logger.info(f"File reference expired for {file_name} (msg_id {msg_id}). Refetching message from channel...")
+                                msg = await self.downloader.client.get_messages(msg.peer_id, ids=msg_id)
+                            except Exception as re_err:
+                                logger.warning(f"Could not refetch message {msg_id}: {re_err}")
+                        
                         if retries >= self.config.max_retries:
                             raise err
                         logger.warning(f"Download retry {retries}/{self.config.max_retries} for {file_name}: {err}")
