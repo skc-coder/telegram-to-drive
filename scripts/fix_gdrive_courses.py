@@ -72,7 +72,7 @@ for course_key, remote_paths in target_courses.items():
                 dir_path = f'{base_remote}/{sub_path}'.strip('/') if sub_path else base_remote
                 for old_sfn in file_list:
                     # Skip if file already has lecture number e.g. 1a, 2b, 4c or is already in a module folder
-                    if re.match(r'^\d+[a-z]?\b', base_sfn, re.IGNORECASE) or sub_path.startswith("Module"):
+                    if re.match(r'^\d+[a-z]?\b', old_sfn, re.IGNORECASE) or sub_path.startswith("Module"):
                         continue
                     sfn_no_prefix = re.sub(r'^(Lecture\s*|LECTURE\s*)', '', sfn_no_prefix, flags=re.IGNORECASE).strip()
 
@@ -92,12 +92,26 @@ for course_key, remote_paths in target_courses.items():
                     matched_sec = ''
                     matched_title = base_sfn
 
+                    # Try exact sub-key match first
                     for t_key, (sec, l_code, o_title) in title_to_info.items():
                         if t_key and (t_key in clean_sfn_key or clean_sfn_key in t_key):
                             matched_code = l_code
                             matched_sec = sec
                             matched_title = o_title
                             break
+
+                    # Fallback to word token overlap matching
+                    if not matched_code:
+                        sfn_words = set(re.findall(r'[a-z0-9]+', base_sfn.lower()))
+                        best_score = 0
+                        for t_key, (sec, l_code, o_title) in title_to_info.items():
+                            t_words = set(re.findall(r'[a-z0-9]+', o_title.lower()))
+                            common = sfn_words.intersection(t_words)
+                            if len(common) > best_score and len(common) >= 2:
+                                best_score = len(common)
+                                matched_code = l_code
+                                matched_sec = sec
+                                matched_title = o_title
 
                     if matched_code or sfn_no_prefix != old_sfn:
                         num_prefix = f'{matched_code} ' if matched_code and not re.match(r'^\d+[a-z]?\b', base_sfn, re.IGNORECASE) else ''
