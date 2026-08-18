@@ -11,9 +11,9 @@ with open(json_path) as f:
     course_data = json.load(f)
 
 target_courses = {
-    'c programming': 'gdrive:GATE_Courses/C Programming',
-    'compiler design': 'gdrive:GATE_Courses/Compiler Design',
-    'data structures': 'gdrive:GATE_Courses/My data structures '
+    'c programming': ['gdrive:GATE_Courses/C Programming'],
+    'compiler design': ['gdrive:GATE_Courses/Compiler Design', 'gdrive:GATE_Courses/Compiler Design/Compiler Design'],
+    'data structures': ['gdrive:GATE_Courses/My data structures ', 'gdrive:GATE_Courses/My data structures /Data Structures']
 }
 
 def get_syllabus_items(course_key):
@@ -23,63 +23,88 @@ def get_syllabus_items(course_key):
             return c.get('syllabus', [])
     return []
 
-for course_key, base_remote in target_courses.items():
+for course_key, remote_paths in target_courses.items():
     syllabus = get_syllabus_items(course_key)
     print(f'==================================================')
     print(f'Fixing lecture numbers for: {course_key.upper()} ({len(syllabus)} syllabus items)')
     
-    title_to_code = {}
+    title_to_info = {}
     for item in syllabus:
         title = item.get('title', '').strip()
         name = item.get('name', '').strip()
         code = item.get('code', '').strip()
         sec = item.get('section', 'Module Uncategorized').strip()
+        sec = re.sub(r'[/\\?%*:|"<>]', '_', sec)
 
         m = re.search(r'\b(\d+[a-z]?)\b', title, re.IGNORECASE)
         lec_code = ''
         if m:
             lec_code = m.group(1).lower()
+        elif code:
+            m_code = re.search(r'\b(\d+[a-z]?)\b', code, re.IGNORECASE)
+            if m_code:
+                lec_code = m_code.group(1).lower()
 
         clean_t = re.sub(r'^(Lecture\s*\d+[a-z]?\.?|LIVE:?|Annotated Notes:?|\d+[a-z]?\.?)\s*', '', title, flags=re.IGNORECASE).strip()
         clean_t_key = re.sub(r'[^a-z0-9]', '', clean_t.lower())
 
         if clean_t_key:
-            title_to_code[clean_t_key] = (sec, lec_code, clean_t)
+            title_to_info[clean_t_key] = (sec, lec_code, clean_t)
 
-    res_base = subprocess.run(['rclone', 'lsf', base_remote], capture_output=True, text=True)
+    for base_remote in remote_paths:
+        res_base = subprocess.run(['rclone', 'lsf', base_remote], capture_output=True, text=True)
 
-    if res_base.returncode == 0:
-        sub_dirs = [d.strip('/') for d in res_base.stdout.splitlines() if d.endswith('/')]
-        for sub in sub_dirs:
-            dir_path = f'{base_remote}/{sub}'
-            res_sub_files = subprocess.run(['rclone', 'lsf', dir_path], capture_output=True, text=True)
-            if res_sub_files.returncode == 0:
-                sfiles = [f.strip() for f in res_sub_files.stdout.splitlines() if f.strip() and not f.endswith('/')]
-                for old_sfn in sfiles:
+        if res_base.returncode == 0:
+            lines = [l.strip() for l in res_base.stdout.splitlines() if l.strip()]
+            sub_dirs = [d.strip('/') for d in lines if d.endswith('/')]
+            root_files = [f for f in lines if not f.endswith('/')]
+            
+            # Process files directly under this remote directory
+            targets = [('', root_files)] + [(sd, []) for sd in sub_dirs]
+            
+            for sub_dir in sub_dirs:
+                res_sub = subprocess.run(['rclone', 'lsf', f'{base_remote}/{sub_dir}'], capture_output=True, text=True)
+                if res_sub.returncode == 0:
+                    s_files = [f.strip() for f in res_sub.stdout.splitlines() if f.strip() and not f.endswith('/')]
+                    targets.append((sub_dir, s_files))
+
+            for sub_path, file_list in targets:
+                dir_path = f'{base_remote}/{sub_path}'.strip('/') if sub_path else base_remote
+                for old_sfn in file_list:
+                    # Strip lead prefixes like 000. 001. 002.
+                    sfn_no_prefix = re.sub(r'^\d{3}\.\s*', '', old_sfn)
+                    sfn_no_prefix = re.sub(r'^(Lecture\s*|LECTURE\s*)', '', sfn_no_prefix, flags=re.IGNORECASE).strip()
+
                     ext = ''
-                    if '.' in old_sfn:
-                        parts = old_sfn.rsplit('.', 1)
+                    if '.' in sfn_no_prefix:
+                        parts = sfn_no_prefix.rsplit('.', 1)
                         if len(parts[1]) <= 4 and not any(c in parts[1] for c in ' :()'):
                             ext = '.' + parts[1]
                             base_sfn = parts[0]
                         else:
-                            base_sfn = old_sfn
+                            base_sfn = sfn_no_prefix
                     else:
-                        base_sfn = old_sfn
-
-                    if re.match(r'^\d+[a-z]?\b', base_sfn, re.IGNORECASE):
-                        continue
+                        base_sfn = sfn_no_prefix
 
                     clean_sfn_key = re.sub(r'[^a-z0-9]', '', base_sfn.lower())
                     matched_code = ''
-                    for t_key, (sec, l_code, o_title) in title_to_code.items():
+                    matched_sec = ''
+                    matched_title = base_sfn
+
+                    for t_key, (sec, l_code, o_title) in title_to_info.items():
                         if t_key and (t_key in clean_sfn_key or clean_sfn_key in t_key):
                             matched_code = l_code
+                            matched_sec = sec
+                            matched_title = o_title
                             break
 
-                    if matched_code:
-                        new_sfn = f'{matched_code} {base_sfn}{ext}'
-                        print(f'  [{course_key.upper()}] "{old_sfn}" -> "{new_sfn}"')
-                        subprocess.run(['rclone', 'moveto', f'{dir_path}/{old_sfn}', f'{dir_path}/{new_sfn}'])
+                    if matched_code or sfn_no_prefix != old_sfn:
+                        num_prefix = f'{matched_code} ' if matched_code and not re.match(r'^\d+[a-z]?\b', base_sfn, re.IGNORECASE) else ''
+                        new_sfn = f'{num_prefix}{base_sfn}{ext}'
+
+                        # Move into module folder if resolved
+                        dest_folder = f'{base_remote}/{matched_sec}' if matched_sec else dir_path
+                        print(f'  [{course_key.upper()}] "{old_sfn}" -> "{matched_sec}/{new_sfn}"')
+                        subprocess.run(['rclone', 'moveto', f'{dir_path}/{old_sfn}', f'{dest_folder}/{new_sfn}'])
 
 print('\nALL THREE COURSES (C Programming, Compiler Design, Data Structures) PROPERLY PREFIXED WITH LECTURE NUMBERS!')
