@@ -1,3 +1,6 @@
+import json
+import re
+import subprocess
 from pathlib import Path
 
 json_path = Path("plans/course_details.json")
