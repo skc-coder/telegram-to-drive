@@ -1,8 +1,10 @@
-import json
-import subprocess
-import re
+from pathlib import Path
 
-with open('/home/skc/dev/lecture plan/course_details.json') as f:
+json_path = Path("plans/course_details.json")
+if not json_path.exists():
+    json_path = Path("/home/skc/dev/lecture plan/course_details.json")
+
+with open(json_path) as f:
     course_data = json.load(f)
 
 target_courses = {
